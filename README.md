@@ -89,4 +89,6 @@ npm run dev
 ## Docker 部署
 
 - 生产部署文档见 `DEPLOY_DOCKER.md`
-- 关键文件：`docker-compose.yml`、`backend/Dockerfile`、`frontend/Dockerfile`、`deploy/Caddyfile`
+- 支持三种方案：`1Panel OpenResty`、`外部 Nginx`、`Docker 内置 Caddy`
+- 默认应用编排：`docker-compose.yml`（backend + frontend）
+- Caddy 方案使用覆盖文件：`docker-compose.caddy.yml` + `deploy/Caddyfile`

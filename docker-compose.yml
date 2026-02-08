@@ -9,8 +9,8 @@ services:
       - ./backend/.env
     volumes:
       - backend_storage:/app/backend/storage
-    expose:
-      - "8000"
+    ports:
+      - "127.0.0.1:18000:8000"
 
   frontend:
     build:
@@ -20,27 +20,8 @@ services:
         VITE_API_BASE: /api/v1
     container_name: jmweb-frontend
     restart: unless-stopped
-    expose:
-      - "80"
-
-  caddy:
-    image: caddy:2.8-alpine
-    container_name: jmweb-caddy
-    restart: unless-stopped
-    depends_on:
-      - backend
-      - frontend
     ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      - APP_DOMAIN=${APP_DOMAIN}
-    volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
+      - "127.0.0.1:18080:80"
 
 volumes:
   backend_storage:
-  caddy_data:
-  caddy_config:
