@@ -10,6 +10,7 @@ from backend.app.db.session import SessionLocal, engine
 from backend.app.models import DownloadJob, User  # noqa: F401
 from backend.app.services.user_service import ensure_default_admin
 from backend.app.utils.file_utils import ensure_dir
+from backend.app.workers.job_runner import recover_unfinished_jobs
 from backend.app.workers.scheduler import start_cleanup_scheduler
 
 
@@ -36,6 +37,7 @@ def on_startup() -> None:
     finally:
         db.close()
 
+    recover_unfinished_jobs()
     start_cleanup_scheduler()
 
 

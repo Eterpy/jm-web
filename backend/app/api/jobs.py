@@ -13,6 +13,7 @@ from backend.app.db.session import get_db
 from backend.app.models.job import JobStatus, JobType
 from backend.app.models.user import User
 from backend.app.schemas.job import (
+    CancelJobResponse,
     CleanupJobsResponse,
     DownloadByIdRequest,
     DownloadJobOut,
@@ -34,7 +35,8 @@ from backend.app.services.job_service import (
 )
 from backend.app.services.job_service import clear_failed_expired_jobs_for_user
 from backend.app.services.jm_service import JmCredential, fetch_favorites, fetch_ranking, search_album, verify_login
-from backend.app.workers.job_runner import enqueue_job
+from backend.app.utils.file_utils import safe_remove_path
+from backend.app.workers.job_runner import CANCELLED_MESSAGE, cleanup_job_artifacts, enqueue_job, request_cancel
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -235,6 +237,39 @@ def get_job(
 ) -> DownloadJobOut:
     job = get_job_for_user(db, current_user, job_id)
     return DownloadJobOut.model_validate(job)
+
+
+@router.post("/{job_id}/cancel", response_model=CancelJobResponse)
+def cancel_job(
+    job_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> CancelJobResponse:
+    job = get_job_for_user(db, current_user, job_id)
+    if job.status in {JobStatus.DONE, JobStatus.EXPIRED, JobStatus.CLEANED, JobStatus.FAILED}:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Job status is {job.status.value}")
+
+    request_cancel(job.id)
+    cleanup_job_artifacts(job.id)
+
+    if job.result_file_path:
+        safe_remove_path(Path(job.result_file_path).parent)
+    if job.source_dir:
+        source_path = Path(job.source_dir)
+        safe_remove_path(source_path)
+        safe_remove_path(source_path.parent)
+
+    job.status = JobStatus.FAILED
+    job.error_message = CANCELLED_MESSAGE
+    job.result_file_path = None
+    job.result_file_name = None
+    job.source_dir = None
+    job.download_token = None
+    job.merged_at = None
+    job.expires_at = None
+    db.commit()
+
+    return CancelJobResponse(cancelled=True)
 
 
 @router.get("/{job_id}/download-link", response_model=DownloadTokenOut)

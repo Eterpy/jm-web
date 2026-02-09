@@ -96,7 +96,10 @@
             <td>{{ job.expires_at || '-' }}</td>
             <td>{{ job.error_message || '-' }}</td>
             <td>
-              <button class="btn" :disabled="job.status !== 'done'" @click="downloadJob(job.id)">下载</button>
+              <div class="row">
+                <button class="btn" :disabled="job.status !== 'done'" @click="downloadJob(job.id)">下载</button>
+                <button class="btn danger" :disabled="!canCancel(job.status)" @click="cancelJob(job.id)">中止</button>
+              </div>
             </td>
           </tr>
         </tbody>
@@ -257,6 +260,22 @@ async function downloadJob(jobId) {
     window.open(buildApiPath(cleanPath), '_blank')
   } catch (err) {
     error.value = err.message || '获取下载链接失败'
+  }
+}
+
+function canCancel(status) {
+  return ['queued', 'running', 'merging'].includes(status)
+}
+
+async function cancelJob(jobId) {
+  error.value = ''
+  message.value = ''
+  try {
+    await apiRequest(`/jobs/${jobId}/cancel`, { method: 'POST' })
+    message.value = `任务 ${jobId} 已中止并清理`
+    await loadJobs()
+  } catch (err) {
+    error.value = err.message || '中止任务失败'
   }
 }
 

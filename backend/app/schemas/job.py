@@ -54,3 +54,7 @@ class JmLoginResponse(BaseModel):
 
 class CleanupJobsResponse(BaseModel):
     deleted_count: int
+
+
+class CancelJobResponse(BaseModel):
+    cancelled: bool
