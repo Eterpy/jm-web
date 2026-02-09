@@ -1,9 +1,12 @@
 <template>
   <div class="layout">
     <header class="header" v-if="showHeader">
-      <div class="title">JM Web</div>
+      <div class="title-group">
+        <div class="title">JM Web</div>
+        <div class="subtitle">ACG Download Console</div>
+      </div>
       <div class="header-right">
-        <span class="user">{{ authState.me?.username }} ({{ authState.me?.role }})</span>
+        <span class="user-badge">{{ authState.me?.username }} ({{ authState.me?.role }})</span>
         <button class="btn" @click="handleLogout">Logout</button>
       </div>
     </header>

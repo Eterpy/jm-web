@@ -136,7 +136,11 @@ def _build_client_by_impl(impl: str, credential: JmCredential | None):
     domain_list = _domains_for_impl(impl)
     if domain_list:
         kwargs["domain_list"] = domain_list
-    client = option.new_jm_client(impl=impl, **kwargs)
+    client = option.new_jm_client(
+        impl=impl,
+        retry_times=settings.jm_retry_times,
+        **kwargs,
+    )
     if credential is not None:
         client.login(credential.username, credential.password)
     return client
