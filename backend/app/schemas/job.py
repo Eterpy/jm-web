@@ -58,3 +58,7 @@ class CleanupJobsResponse(BaseModel):
 
 class CancelJobResponse(BaseModel):
     cancelled: bool
+
+
+class DeleteJobResponse(BaseModel):
+    deleted: bool

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import re
 from typing import Any
 
 import jmcomic
@@ -11,6 +12,9 @@ from backend.app.core.config import settings
 from backend.app.models.job import JobType
 from backend.app.schemas.job import SearchResultItem
 from backend.app.utils.file_utils import ensure_dir
+
+_ALBUM_PATH_RE = re.compile(r"/album/(\d+)", flags=re.IGNORECASE)
+_PHOTO_PATH_RE = re.compile(r"/photo/(\d+)", flags=re.IGNORECASE)
 
 
 @dataclass
@@ -63,6 +67,9 @@ def _meta_data_args() -> dict[str, Any]:
 
 def _normalize_album_id(value: str) -> str:
     text = value.strip()
+    album_match = _ALBUM_PATH_RE.search(text)
+    if album_match:
+        return album_match.group(1)
     if text.lower().startswith("jm"):
         return text[2:]
     return text
@@ -70,6 +77,9 @@ def _normalize_album_id(value: str) -> str:
 
 def _normalize_photo_id(value: str) -> str:
     text = value.strip()
+    photo_match = _PHOTO_PATH_RE.search(text)
+    if photo_match:
+        return photo_match.group(1)
     if text.lower().startswith("p"):
         return text[1:]
     return text

@@ -11,6 +11,7 @@ class Settings(BaseSettings):
 
     app_name: str = "JM Web"
     api_prefix: str = "/api/v1"
+    app_timezone: str = "Asia/Shanghai"
 
     secret_key: str = "CHANGE_ME_TO_A_LONG_RANDOM_SECRET"
     access_token_expire_minutes: int = 24 * 60

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse
@@ -15,6 +16,7 @@ from backend.app.models.user import User
 from backend.app.schemas.job import (
     CancelJobResponse,
     CleanupJobsResponse,
+    DeleteJobResponse,
     DownloadByIdRequest,
     DownloadJobOut,
     DownloadTokenOut,
@@ -39,6 +41,8 @@ from backend.app.utils.file_utils import safe_remove_path
 from backend.app.workers.job_runner import CANCELLED_MESSAGE, cleanup_job_artifacts, enqueue_job, request_cancel
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
+
+_PREF_PHOTO_ID_RE = re.compile(r"^p\d+$", flags=re.IGNORECASE)
 
 
 def _ensure_utc(dt: datetime | None) -> datetime | None:
@@ -182,6 +186,20 @@ def download_by_id(
     if job_type in {JobType.ALBUM, JobType.PHOTO} and not payload.id_value:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="id_value is required")
 
+    raw_id_value = (payload.id_value or "").strip()
+    if job_type == JobType.ALBUM:
+        if _PREF_PHOTO_ID_RE.fullmatch(raw_id_value) or "/photo/" in raw_id_value.lower():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="检测到章节ID，请将类型切换为 photo 后重试",
+            )
+    if job_type == JobType.PHOTO:
+        if "/album/" in raw_id_value.lower() or raw_id_value.lower().startswith("jm"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="检测到本子ID，请将类型切换为 album 后重试",
+            )
+
     if job_type == JobType.MULTI_ALBUM:
         if not payload.album_ids:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="album_ids is required")
@@ -237,6 +255,29 @@ def get_job(
 ) -> DownloadJobOut:
     job = get_job_for_user(db, current_user, job_id)
     return DownloadJobOut.model_validate(job)
+
+
+@router.delete("/{job_id}", response_model=DeleteJobResponse)
+def delete_job(
+    job_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> DeleteJobResponse:
+    job = get_job_for_user(db, current_user, job_id)
+
+    request_cancel(job.id)
+    cleanup_job_artifacts(job.id)
+
+    if job.result_file_path:
+        safe_remove_path(Path(job.result_file_path).parent)
+    if job.source_dir:
+        source_path = Path(job.source_dir)
+        safe_remove_path(source_path)
+        safe_remove_path(source_path.parent)
+
+    db.delete(job)
+    db.commit()
+    return DeleteJobResponse(deleted=True)
 
 
 @router.post("/{job_id}/cancel", response_model=CancelJobResponse)

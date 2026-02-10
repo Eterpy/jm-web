@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+import time
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -25,8 +28,15 @@ app.add_middleware(
 )
 
 
+def _apply_app_timezone() -> None:
+    os.environ["TZ"] = settings.app_timezone
+    if hasattr(time, "tzset"):
+        time.tzset()
+
+
 @app.on_event("startup")
 def on_startup() -> None:
+    _apply_app_timezone()
     ensure_dir(settings.download_root)
     ensure_dir(settings.temp_root)
     Base.metadata.create_all(bind=engine)

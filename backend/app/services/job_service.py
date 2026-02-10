@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -11,9 +12,14 @@ from backend.app.models.job import DownloadJob, JobStatus, JobType
 from backend.app.models.user import User, UserRole
 from backend.app.utils.file_utils import safe_remove_path
 
+_ALBUM_PATH_RE = re.compile(r"/album/(\d+)", flags=re.IGNORECASE)
+
 
 def _normalize_album_id(value: str) -> str:
     text = value.strip()
+    album_match = _ALBUM_PATH_RE.search(text)
+    if album_match:
+        return album_match.group(1)
     if text.lower().startswith("jm"):
         return text[2:]
     return text
