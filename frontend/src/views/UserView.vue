@@ -68,9 +68,14 @@
       </ul>
 
       <h2>可选功能</h2>
-      <div class="row">
+      <div class="row aux-toggle-row">
         <button class="btn secondary" @click="toggleRanking">{{ auxMode === 'ranking' ? '收起周排行' : '周排行' }}</button>
-        <button class="btn secondary" @click="loadFavorites">收藏夹</button>
+        <button class="btn secondary" @click="toggleFavorites">{{ auxMode === 'favorites' ? '收起收藏夹' : '收藏夹' }}</button>
+      </div>
+      <div v-if="auxMode === 'favorites'" class="row aux-pagination-row">
+        <button class="btn secondary" :disabled="favoritesPage <= 1 || favoritesLoading" @click="prevFavoritesPage">上一页</button>
+        <span class="muted">收藏夹第 {{ favoritesPage }} 页（上限约 800 条）</span>
+        <button class="btn secondary" :disabled="favoritesLoading || favoritesNoMore" @click="nextFavoritesPage">下一页</button>
       </div>
       <ul class="list">
         <li v-for="item in auxList" :key="`aux-${item.album_id}-${item.title}`">{{ item.album_id }} - {{ item.title }}</li>
@@ -132,6 +137,9 @@ const jobs = ref([])
 const searchResults = ref([])
 const auxList = ref([])
 const auxMode = ref(null)
+const favoritesPage = ref(1)
+const favoritesNoMore = ref(false)
+const favoritesLoading = ref(false)
 const jobsLoading = ref(false)
 
 const message = ref('')
@@ -371,15 +379,57 @@ async function toggleRanking() {
   await loadRanking()
 }
 
-async function loadFavorites() {
+async function loadFavorites(page = 1) {
   error.value = ''
-  auxList.value = []
+  favoritesLoading.value = true
   try {
-    auxList.value = await apiRequest('/jobs/favorites?page=1')
+    const items = await apiRequest(`/jobs/favorites?page=${page}`)
+    const normalized = Array.isArray(items) ? items : []
+    const nextSignature = normalized.map((item) => `${item.album_id}|${item.title}`).join('||')
+    const currentSignature = auxList.value.map((item) => `${item.album_id}|${item.title}`).join('||')
+
+    if (page > 1 && (normalized.length === 0 || nextSignature === currentSignature)) {
+      favoritesNoMore.value = true
+      message.value = '已到收藏夹最后一页'
+      return
+    }
+
+    auxList.value = normalized
     auxMode.value = 'favorites'
+    favoritesPage.value = page
+    favoritesNoMore.value = normalized.length === 0
   } catch (err) {
     error.value = err.message || '加载收藏夹失败'
+  } finally {
+    favoritesLoading.value = false
   }
+}
+
+async function toggleFavorites() {
+  if (auxMode.value === 'favorites') {
+    auxList.value = []
+    auxMode.value = null
+    favoritesNoMore.value = false
+    return
+  }
+  favoritesPage.value = 1
+  favoritesNoMore.value = false
+  await loadFavorites(1)
+}
+
+async function prevFavoritesPage() {
+  if (favoritesPage.value <= 1) {
+    return
+  }
+  favoritesNoMore.value = false
+  await loadFavorites(favoritesPage.value - 1)
+}
+
+async function nextFavoritesPage() {
+  if (favoritesNoMore.value) {
+    return
+  }
+  await loadFavorites(favoritesPage.value + 1)
 }
 
 async function downloadJob(jobId) {

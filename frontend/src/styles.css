@@ -341,6 +341,16 @@ select:focus {
   flex-wrap: wrap;
 }
 
+.aux-toggle-row,
+.aux-pagination-row {
+  gap: 14px;
+}
+
+.aux-pagination-row {
+  align-items: center;
+  margin-top: 14px;
+}
+
 .search-row input {
   flex: 1 1 260px;
 }
