@@ -142,13 +142,20 @@ def _build_client(credential: JmCredential | None):
 
 def _build_client_by_impl(impl: str, credential: JmCredential | None):
     option = jmcomic.JmOption.default()
+    # retry_times 属于 option 的 client 配置，不应作为 new_jm_client 的请求参数透传
+    # 否则会落到 requests.Session.request(...) 触发 unexpected keyword argument 'retry_times'
+    if settings.jm_retry_times > 0:
+        try:
+            option.client.retry_times = settings.jm_retry_times
+        except Exception:  # noqa: BLE001
+            pass
+
     kwargs = _meta_data_args()
     domain_list = _domains_for_impl(impl)
     if domain_list:
         kwargs["domain_list"] = domain_list
     client = option.new_jm_client(
         impl=impl,
-        retry_times=settings.jm_retry_times,
         **kwargs,
     )
     if credential is not None:
