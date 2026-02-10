@@ -69,7 +69,7 @@
 
       <h2>可选功能</h2>
       <div class="row">
-        <button class="btn secondary" @click="loadRanking">周排行</button>
+        <button class="btn secondary" @click="toggleRanking">{{ auxMode === 'ranking' ? '收起周排行' : '周排行' }}</button>
         <button class="btn secondary" @click="loadFavorites">收藏夹</button>
       </div>
       <ul class="list">
@@ -131,12 +131,14 @@ const searchForm = reactive({ keyword: '' })
 const jobs = ref([])
 const searchResults = ref([])
 const auxList = ref([])
+const auxMode = ref(null)
 const jobsLoading = ref(false)
 
 const message = ref('')
 const error = ref('')
 const editingJmAccount = ref(false)
 const JOB_POLL_INTERVAL_MS = 5000
+const ACTIVE_POLL_STATUSES = new Set(['queued', 'running', 'merging'])
 let jobsPollTimer = null
 
 const jmBound = computed(() => Boolean(authState.me?.jm_credential_bound))
@@ -241,6 +243,7 @@ async function createDownloadJob() {
   error.value = ''
   message.value = ''
   try {
+    const existingIds = new Set(jobs.value.map((job) => job.id))
     const body = {
       target_type: downloadForm.target_type,
       id_value: downloadForm.id_value || null,
@@ -254,12 +257,12 @@ async function createDownloadJob() {
       body.id_value = normalizeSingleIdInput(downloadForm.target_type, downloadForm.id_value)
     }
 
-    await apiRequest('/jobs/download-by-id', {
+    const createdOrReused = await apiRequest('/jobs/download-by-id', {
       method: 'POST',
       body: JSON.stringify(body),
     })
 
-    message.value = '下载任务已创建'
+    message.value = existingIds.has(createdOrReused.id) ? `任务已存在，已复用（#${createdOrReused.id}）` : '下载任务已创建'
     await loadJobs()
   } catch (err) {
     error.value = err.message || '创建下载任务失败'
@@ -287,8 +290,9 @@ async function downloadFromSearch(albumId) {
   error.value = ''
   message.value = ''
   try {
-    await apiRequest(`/jobs/download-from-search/${albumId}`, { method: 'POST' })
-    message.value = `已创建下载任务 album ${albumId}`
+    const existingIds = new Set(jobs.value.map((job) => job.id))
+    const createdOrReused = await apiRequest(`/jobs/download-from-search/${albumId}`, { method: 'POST' })
+    message.value = existingIds.has(createdOrReused.id) ? `任务已存在，已复用（#${createdOrReused.id}）` : `已创建下载任务 album ${albumId}`
     await loadJobs()
   } catch (err) {
     error.value = err.message || '创建任务失败'
@@ -309,7 +313,31 @@ async function loadJobs(options = {}) {
     }
   } finally {
     jobsLoading.value = false
+    syncJobsPolling()
   }
+}
+
+function hasActiveJobs() {
+  return jobs.value.some((job) => ACTIVE_POLL_STATUSES.has(String(job.status || '').toLowerCase()))
+}
+
+function stopJobsPolling() {
+  if (jobsPollTimer) {
+    window.clearInterval(jobsPollTimer)
+    jobsPollTimer = null
+  }
+}
+
+function syncJobsPolling() {
+  if (hasActiveJobs()) {
+    if (!jobsPollTimer) {
+      jobsPollTimer = window.setInterval(() => {
+        loadJobs({ silent: true })
+      }, JOB_POLL_INTERVAL_MS)
+    }
+    return
+  }
+  stopJobsPolling()
 }
 
 async function clearFailedExpiredJobs() {
@@ -326,12 +354,21 @@ async function clearFailedExpiredJobs() {
 
 async function loadRanking() {
   error.value = ''
-  auxList.value = []
   try {
     auxList.value = await apiRequest('/jobs/ranking/week?page=1')
+    auxMode.value = 'ranking'
   } catch (err) {
     error.value = err.message || '加载排行失败'
   }
+}
+
+async function toggleRanking() {
+  if (auxMode.value === 'ranking') {
+    auxList.value = []
+    auxMode.value = null
+    return
+  }
+  await loadRanking()
 }
 
 async function loadFavorites() {
@@ -339,6 +376,7 @@ async function loadFavorites() {
   auxList.value = []
   try {
     auxList.value = await apiRequest('/jobs/favorites?page=1')
+    auxMode.value = 'favorites'
   } catch (err) {
     error.value = err.message || '加载收藏夹失败'
   }
@@ -425,16 +463,10 @@ async function deleteJob(jobId) {
 
 onMounted(async () => {
   await loadJobs()
-  jobsPollTimer = window.setInterval(() => {
-    loadJobs({ silent: true })
-  }, JOB_POLL_INTERVAL_MS)
   syncJmFormWithState()
 })
 
 onUnmounted(() => {
-  if (jobsPollTimer) {
-    window.clearInterval(jobsPollTimer)
-    jobsPollTimer = null
-  }
+  stopJobsPolling()
 })
 </script>

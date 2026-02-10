@@ -13,6 +13,7 @@ from backend.app.models.user import User, UserRole
 from backend.app.utils.file_utils import safe_remove_path
 
 _ALBUM_PATH_RE = re.compile(r"/album/(\d+)", flags=re.IGNORECASE)
+_PHOTO_PATH_RE = re.compile(r"/photo/(\d+)", flags=re.IGNORECASE)
 
 
 def _normalize_album_id(value: str) -> str:
@@ -23,6 +24,50 @@ def _normalize_album_id(value: str) -> str:
     if text.lower().startswith("jm"):
         return text[2:]
     return text
+
+
+def _normalize_photo_id(value: str) -> str:
+    text = value.strip()
+    photo_match = _PHOTO_PATH_RE.search(text)
+    if photo_match:
+        return photo_match.group(1)
+    if text.lower().startswith("p"):
+        return text[1:]
+    return text
+
+
+def normalize_payload_for_job(job_type: JobType, payload: dict) -> dict:
+    if job_type == JobType.ALBUM:
+        value = str(payload.get("id_value") or "").strip()
+        return {"id_value": _normalize_album_id(value)}
+
+    if job_type == JobType.PHOTO:
+        value = str(payload.get("id_value") or "").strip()
+        return {"id_value": _normalize_photo_id(value)}
+
+    if job_type == JobType.MULTI_ALBUM:
+        raw_ids = payload.get("album_ids") or []
+        normalized = [_normalize_album_id(str(item)) for item in raw_ids if str(item).strip()]
+        # 去重 + 排序，保证不同输入顺序被视为同一批目标
+        normalized = sorted(set(normalized))
+        return {"album_ids": normalized}
+
+    return payload
+
+
+def _payload_signature(job_type: JobType, payload: dict) -> tuple:
+    normalized = normalize_payload_for_job(job_type, payload)
+    if job_type == JobType.MULTI_ALBUM:
+        return (job_type.value, tuple(normalized.get("album_ids") or []))
+    return (job_type.value, normalized.get("id_value") or "")
+
+
+def _ensure_utc(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 def payload_album_units(job_type: JobType, payload: dict) -> int:
@@ -82,13 +127,47 @@ def create_job(db: Session, user: User, job_type: JobType, payload: dict) -> Dow
     job = DownloadJob(
         user_id=user.id,
         job_type=job_type,
-        payload_json=json.dumps(payload, ensure_ascii=False),
+        payload_json=json.dumps(normalize_payload_for_job(job_type, payload), ensure_ascii=False),
         status=JobStatus.QUEUED,
     )
     db.add(job)
     db.commit()
     db.refresh(job)
     return job
+
+
+def find_reusable_job_for_user(db: Session, user: User, job_type: JobType, payload: dict) -> DownloadJob | None:
+    target_signature = _payload_signature(job_type, payload)
+    if target_signature == (job_type.value, ""):
+        return None
+
+    candidate_statuses = {JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.MERGING, JobStatus.DONE}
+    query = (
+        db.query(DownloadJob)
+        .filter(DownloadJob.user_id == user.id)
+        .filter(DownloadJob.job_type == job_type)
+        .filter(DownloadJob.status.in_(candidate_statuses))
+        .order_by(DownloadJob.id.desc())
+    )
+
+    now = datetime.now(timezone.utc)
+    for job in query.all():
+        try:
+            existing_payload = json.loads(job.payload_json or "{}")
+        except Exception:  # noqa: BLE001
+            existing_payload = {}
+        if _payload_signature(job_type, existing_payload) != target_signature:
+            continue
+
+        if job.status in {JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.MERGING}:
+            return job
+
+        if job.status == JobStatus.DONE:
+            expires_at = _ensure_utc(job.expires_at)
+            if expires_at is not None and expires_at > now and job.download_token and job.result_file_path:
+                return job
+
+    return None
 
 
 def list_jobs_for_user(db: Session, user: User) -> list[DownloadJob]:

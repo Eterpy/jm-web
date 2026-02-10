@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.app.models.job import JobStatus, JobType
 
@@ -36,10 +36,32 @@ class DownloadJobOut(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    @field_validator("expires_at", "created_at", "updated_at", mode="before")
+    @classmethod
+    def ensure_utc_timezone(cls, value):
+        if value is None:
+            return value
+        if isinstance(value, datetime):
+            if value.tzinfo is None:
+                return value.replace(tzinfo=timezone.utc)
+            return value.astimezone(timezone.utc)
+        return value
+
 
 class DownloadTokenOut(BaseModel):
     download_url: str
     expires_at: datetime
+
+    @field_validator("expires_at", mode="before")
+    @classmethod
+    def ensure_utc_timezone(cls, value):
+        if value is None:
+            return value
+        if isinstance(value, datetime):
+            if value.tzinfo is None:
+                return value.replace(tzinfo=timezone.utc)
+            return value.astimezone(timezone.utc)
+        return value
 
 
 class JmLoginRequest(BaseModel):

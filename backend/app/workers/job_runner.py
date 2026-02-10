@@ -58,9 +58,12 @@ def _raise_async_exception(thread_id: int, exc_type: type[BaseException]) -> boo
 
 def request_cancel(job_id: int) -> bool:
     with _lock:
-        _cancel_requested.add(job_id)
         future = _futures.get(job_id)
         thread_id = _thread_ids.get(job_id)
+        # 仅对真正存在中的任务设置取消标记，避免“孤立取消标记”污染后续复用的任务ID
+        if future is None and thread_id is None:
+            return False
+        _cancel_requested.add(job_id)
 
     if future is not None and future.cancel():
         return True

@@ -29,9 +29,11 @@ from backend.app.services.crypto_service import decrypt_text, encrypt_text
 from backend.app.services.job_service import (
     count_user_album_units,
     create_job,
+    find_reusable_job_for_user,
     get_job_by_token,
     get_job_for_user,
     list_jobs_for_user,
+    normalize_payload_for_job,
     normalize_multi_album_ids,
     payload_album_units,
 )
@@ -210,6 +212,11 @@ def download_by_id(
     else:
         body = {"id_value": payload.id_value}
 
+    body = normalize_payload_for_job(job_type, body)
+    reusable = find_reusable_job_for_user(db, current_user, job_type, body)
+    if reusable is not None:
+        return DownloadJobOut.model_validate(reusable)
+
     _enforce_user_album_limit(db, current_user, job_type, body)
     job = create_job(db, current_user, job_type, body)
     enqueue_job(job.id)
@@ -223,6 +230,11 @@ def download_from_search(
     db: Session = Depends(get_db),
 ) -> DownloadJobOut:
     payload = {"id_value": album_id}
+    payload = normalize_payload_for_job(JobType.ALBUM, payload)
+    reusable = find_reusable_job_for_user(db, current_user, JobType.ALBUM, payload)
+    if reusable is not None:
+        return DownloadJobOut.model_validate(reusable)
+
     _enforce_user_album_limit(db, current_user, JobType.ALBUM, payload)
     job = create_job(db, current_user, JobType.ALBUM, payload)
     enqueue_job(job.id)
@@ -265,7 +277,8 @@ def delete_job(
 ) -> DeleteJobResponse:
     job = get_job_for_user(db, current_user, job_id)
 
-    request_cancel(job.id)
+    if job.status in {JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.MERGING}:
+        request_cancel(job.id)
     cleanup_job_artifacts(job.id)
 
     if job.result_file_path:
