@@ -31,10 +31,17 @@ export async function apiRequest(path, options = {}) {
   if (!resp.ok) {
     let detail = `HTTP ${resp.status}`
     try {
-      const body = await resp.json()
-      detail = body.detail || JSON.stringify(body)
+      const raw = await resp.text()
+      if (raw) {
+        try {
+          const body = JSON.parse(raw)
+          detail = body?.detail || JSON.stringify(body)
+        } catch {
+          detail = raw
+        }
+      }
     } catch {
-      detail = await resp.text()
+      // ignore read error and keep fallback HTTP status
     }
     throw new Error(detail)
   }

@@ -91,7 +91,7 @@
       <table class="table">
         <thead>
           <tr>
-            <th>ID</th>
+            <th>序号</th>
             <th>目标ID</th>
             <th>类型</th>
             <th>状态</th>
@@ -101,8 +101,8 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="job in jobs" :key="job.id">
-            <td>{{ job.id }}</td>
+          <tr v-for="(job, index) in jobs" :key="job.id">
+            <td>{{ index + 1 }}</td>
             <td>{{ formatTargetId(job.payload_json, job.job_type) }}</td>
             <td>{{ job.job_type }}</td>
             <td>{{ job.status }}</td>

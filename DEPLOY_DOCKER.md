@@ -1,25 +1,19 @@
-# VPS + Docker 部署指南（多方案）
+# Docker 部署指南
 
-本文档统一支持三种反向代理方式：
+## 前置条件
 
-- 方案 A：1Panel OpenResty（外部反代，常见）
-- 方案 B：自建 Nginx（外部反代）
-- 方案 C：Docker 内置 Caddy（一体化）
-
-## 1. 通用前置条件
-
-- 一台 Linux VPS（建议 Ubuntu 22.04+）
+- 一台 Linux VPS
 - 已安装 Docker 与 Docker Compose 插件
-- 项目目录：`/opt/jm-web`（示例）
+- 项目目录：`/opt/jm-web`
 
 ```bash
 sudo mkdir -p /opt/jm-web
 sudo chown -R $USER:$USER /opt/jm-web
 cd /opt/jm-web
-# 上传项目文件
+git clone https://github.com/Eterpy/jm-web.git
 ```
 
-## 2. 通用后端配置
+## 后端配置
 
 ```bash
 cd /opt/jm-web
@@ -35,7 +29,7 @@ cp backend/.env.example backend/.env
 - `JM_CLIENT_IMPL` / `JM_FALLBACK_IMPL`
 - `JM_PROXY`（如果 VPS 需要代理访问 JM）
 
-## 3. 启动应用容器（通用）
+## 启动应用容器
 
 ```bash
 docker compose up -d --build
@@ -56,31 +50,28 @@ docker compose logs -f backend
 
 ---
 
-## 4. 方案 A：1Panel OpenResty（推荐）
+## 配置反向代理
+### 方案 A：1Panel OpenResty
 
 在 1Panel 网站配置里添加反向代理：
-
 ```nginx
-server {
-    listen 80;
-    server_name your-domain.com;
-
-    location /api/ {
-        proxy_pass http://127.0.0.1:18000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout 600s;
-    }
-
-    location / {
-        proxy_pass http://127.0.0.1:18080;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
+# /opt/1panel/www/sites/jm.eternge.cc/proxy/root.conf
+location / {
+    proxy_pass http://127.0.0.1:18080;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+```nginx
+# /opt/1panel/www/sites/jm.eternge.cc/proxy/backend.conf
+location ^~ /api/v1/ {
+    proxy_pass http://127.0.0.1:18000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
 }
 ```
 
@@ -88,9 +79,9 @@ HTTPS 证书建议直接用 1Panel 的证书管理申请并绑定。
 
 ---
 
-## 5. 方案 B：外部 Nginx
+### 方案 B：外部 Nginx
 
-如果你自己装了 Nginx（非 1Panel），配置逻辑与上面一致：
+如果你自己装了 Nginx，配置逻辑与上面一致：
 
 ```nginx
 server {
@@ -120,7 +111,7 @@ server {
 
 ---
 
-## 6. 方案 C：Docker 内置 Caddy
+### 方案 C：Docker 内置 Caddy
 
 如果你不想在宿主机单独管理反代，可启用 Caddy 覆盖 compose：
 
@@ -145,7 +136,7 @@ docker compose -f docker-compose.yml -f docker-compose.caddy.yml logs -f caddy
 
 ---
 
-## 7. 更新部署
+## 更新部署
 
 ```bash
 cd /opt/jm-web
@@ -158,7 +149,7 @@ docker compose up -d --build
 docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d --build
 ```
 
-## 8. 备份（SQLite）
+## 备份（SQLite）
 
 当前核心数据在 Docker 卷 `backend_storage`。
 
@@ -171,7 +162,7 @@ docker run --rm \
   alpine sh -c 'cp /from/app.db /to/app-$(date +%F-%H%M%S).db'
 ```
 
-## 9. 常见问题
+## 常见问题
 
 - 访问 502：先看 `docker compose logs -f backend`
 - 反代不通：检查代理目标是否为 `127.0.0.1:18080/18000`
